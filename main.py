@@ -15,6 +15,9 @@ STATIC_DIR: Path = Path.cwd() / "static"
 # List of subscriber queues for SSE
 subscribers: list[asyncio.Queue] = []
 
+# Shutdown event to signal server shutdown
+shutdown_event: asyncio.Event | None = None
+
 
 def repl_thread(loop: asyncio.AbstractEventLoop):
     """REPL thread that reads input and broadcasts to SSE clients."""
@@ -25,6 +28,7 @@ def repl_thread(loop: asyncio.AbstractEventLoop):
     print("Usage:")
     print("  data: <message>   - Send as regular data message")
     print("  event: <name> <message> - Send as custom event")
+    print("  /quit or /q       - Quit the REPL and stop the server")
     print("  help              - Show this help message")
     print("="*60 + "\n")
 
@@ -35,10 +39,21 @@ def repl_thread(loop: asyncio.AbstractEventLoop):
                 continue
 
             # Handle special commands
-            if line.strip().lower() == "help":
+            stripped = line.strip().lower()
+
+            if stripped in ["/quit", "/q"]:
+                print("\nShutting down server...")
+                if shutdown_event:
+                    asyncio.run_coroutine_threadsafe(
+                        trigger_shutdown(), loop
+                    )
+                break
+
+            if stripped == "help":
                 print("\nUsage:")
                 print("  data: <message>         - Send as regular data message")
                 print("  event: <name> <message> - Send as custom event")
+                print("  /quit or /q             - Quit the REPL and stop the server")
                 print("  help                    - Show this help message")
                 print()
                 continue
@@ -54,6 +69,12 @@ def repl_thread(loop: asyncio.AbstractEventLoop):
             break
         except KeyboardInterrupt:
             break
+
+
+async def trigger_shutdown():
+    """Trigger the shutdown event."""
+    if shutdown_event:
+        shutdown_event.set()
 
 
 def parse_input(line: str) -> tuple[str, str]:
@@ -180,10 +201,40 @@ def create_app(static_dir: Path) -> FastAPI:
 
 
 async def run_server(app: FastAPI, host: str, port: int):
-    """Run the uvicorn server."""
+    """Run the uvicorn server with graceful shutdown support."""
+    global shutdown_event
+    shutdown_event = asyncio.Event()
+
     config = uvicorn.Config(app, host=host, port=port, log_level="info")
     server = uvicorn.Server(config)
-    await server.serve()
+
+    # Create a task to run the server
+    server_task = asyncio.create_task(server.serve())
+
+    # Wait for either the server to finish or shutdown event to be triggered
+    shutdown_task = asyncio.create_task(shutdown_event.wait())
+
+    done, pending = await asyncio.wait(
+        [server_task, shutdown_task],
+        return_when=asyncio.FIRST_COMPLETED
+    )
+
+    # If shutdown was triggered, stop the server
+    if shutdown_task in done:
+        server.should_exit = True
+        # Wait a bit for the server to shut down gracefully
+        try:
+            await asyncio.wait_for(server_task, timeout=5.0)
+        except asyncio.TimeoutError:
+            print("Server shutdown timed out")
+
+    # Cancel any pending tasks
+    for task in pending:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 def main():
