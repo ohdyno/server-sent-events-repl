@@ -189,8 +189,25 @@
             }
         }
 
+        /* Custom event type colors */
         .event.custom {
             border-left-color: #c586c0;
+        }
+
+        .event.alert {
+            border-left-color: #f48771;
+        }
+
+        .event.notification {
+            border-left-color: #dcdcaa;
+        }
+
+        .event.update {
+            border-left-color: #569cd6;
+        }
+
+        .event.status {
+            border-left-color: #4ec9b0;
         }
 
         .event-header {
@@ -209,10 +226,29 @@
             border-radius: 3px;
             font-size: 12px;
             font-weight: 600;
+            text-transform: uppercase;
         }
 
+        /* Event type badge colors */
         .event.custom .event-type {
             background: #c586c0;
+        }
+
+        .event.alert .event-type {
+            background: #f48771;
+        }
+
+        .event.notification .event-type {
+            background: #dcdcaa;
+            color: #1e1e1e;
+        }
+
+        .event.update .event-type {
+            background: #569cd6;
+        }
+
+        .event.status .event-type {
+            background: #4ec9b0;
         }
 
         .event-time {
@@ -359,6 +395,9 @@
             return div.innerHTML;
         }
 
+        // Track custom event listeners
+        const customEventListeners = new Map();
+
         function connect() {
             const url = eventUrlInput.value.trim();
             if (!url) {
@@ -382,9 +421,19 @@
                 addEvent('message', event.data, event.data);
             };
 
-            eventSource.addEventListener('custom', (event) => {
-                console.log('Custom event:', event.data);
-                addEvent('custom', event.data, event.data);
+            // Create a generic handler for custom events
+            const handleCustomEvent = (eventType) => (event) => {
+                console.log(`Custom event [${eventType}]:`, event.data);
+                addEvent(eventType, event.data, event.data);
+            };
+
+            // Listen for common custom event types
+            // The viewer will automatically handle any event type sent from the REPL
+            const commonEventTypes = ['custom', 'alert', 'notification', 'update', 'status'];
+            commonEventTypes.forEach(type => {
+                const handler = handleCustomEvent(type);
+                customEventListeners.set(type, handler);
+                eventSource.addEventListener(type, handler);
             });
 
             eventSource.onerror = (error) => {

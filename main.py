@@ -21,29 +21,88 @@ def repl_thread(loop: asyncio.AbstractEventLoop):
     print("\n" + "="*60)
     print("REPL Started - Type messages to broadcast via SSE")
     print("Messages will be sent to all connected clients at /events")
+    print("")
+    print("Usage:")
+    print("  data: <message>   - Send as regular data message")
+    print("  event: <name> <message> - Send as custom event")
+    print("  help              - Show this help message")
     print("="*60 + "\n")
 
     while True:
         try:
             line = input("> ")
-            if line.strip():
-                # Schedule the broadcast in the asyncio event loop
-                asyncio.run_coroutine_threadsafe(broadcast_message(line), loop)
+            if not line.strip():
+                continue
+
+            # Handle special commands
+            if line.strip().lower() == "help":
+                print("\nUsage:")
+                print("  data: <message>         - Send as regular data message")
+                print("  event: <name> <message> - Send as custom event")
+                print("  help                    - Show this help message")
+                print()
+                continue
+
+            # Parse the input
+            event_type, message = parse_input(line)
+
+            # Schedule the broadcast in the asyncio event loop
+            asyncio.run_coroutine_threadsafe(
+                broadcast_message(event_type, message), loop
+            )
         except EOFError:
             break
         except KeyboardInterrupt:
             break
 
 
-async def broadcast_message(message: str):
-    """Broadcast a message to all SSE subscribers."""
+def parse_input(line: str) -> tuple[str, str]:
+    """Parse REPL input to determine event type and message.
+
+    Returns:
+        tuple of (event_type, message) where event_type is 'message' or a custom event name
+    """
+    line = line.strip()
+
+    # Check for "data:" prefix
+    if line.lower().startswith("data:"):
+        message = line[5:].strip()
+        return ("message", message)
+
+    # Check for "event:" prefix
+    if line.lower().startswith("event:"):
+        rest = line[6:].strip()
+        # Split into event name and message
+        parts = rest.split(None, 1)
+        if len(parts) == 2:
+            event_name, message = parts
+            return (event_name, message)
+        elif len(parts) == 1:
+            # Event name but no message
+            return (parts[0], "")
+        else:
+            # Just "event:" with nothing after
+            return ("message", line)
+
+    # No prefix - treat as regular data message
+    return ("message", line)
+
+
+async def broadcast_message(event_type: str, message: str):
+    """Broadcast a message to all SSE subscribers.
+
+    Args:
+        event_type: 'message' for regular data, or custom event name
+        message: The message content
+    """
     # Escape message for JSON
     escaped_message = message.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
 
     # Send to all subscribers
+    event_data = {"type": event_type, "message": escaped_message}
     for queue in subscribers[:]:  # Create a copy to avoid modification during iteration
         try:
-            await queue.put(escaped_message)
+            await queue.put(event_data)
         except Exception as e:
             print(f"Error broadcasting to subscriber: {e}")
 
@@ -68,11 +127,19 @@ def create_app(static_dir: Path) -> FastAPI:
             try:
                 while True:
                     # Wait for events from the REPL
-                    message = await client_queue.get()
+                    event_data = await client_queue.get()
                     timestamp = datetime.now().isoformat()
 
-                    # Format as SSE
-                    yield f"data: {{\"message\": \"{message}\", \"timestamp\": \"{timestamp}\"}}\n\n"
+                    event_type = event_data["type"]
+                    message = event_data["message"]
+
+                    # Format as SSE based on event type
+                    if event_type == "message":
+                        # Regular data message
+                        yield f"data: {{\"message\": \"{message}\", \"timestamp\": \"{timestamp}\"}}\n\n"
+                    else:
+                        # Custom event with event type
+                        yield f"event: {event_type}\ndata: {{\"message\": \"{message}\", \"timestamp\": \"{timestamp}\"}}\n\n"
             finally:
                 # Cleanup when client disconnects
                 subscribers.remove(client_queue)
