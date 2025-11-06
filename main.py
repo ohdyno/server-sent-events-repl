@@ -3,14 +3,10 @@ import asyncio
 from datetime import datetime
 from pathlib import Path
 import threading
-import sys
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 import uvicorn
 
-
-# Global variable to store static directory
-STATIC_DIR: Path = Path.cwd() / "static"
 
 # List of subscriber queues for SSE
 subscribers: list[asyncio.Queue] = []
@@ -20,6 +16,35 @@ shutdown_event: asyncio.Event | None = None
 
 # Server started event to coordinate REPL startup
 server_started_event: threading.Event | None = None
+
+# REPL help text
+HELP_TEXT = """Usage:
+  data: <message>         - Send as regular data message
+  event: <name> <message> - Send as custom event
+  /help or /h             - Show this help message
+  /quit or /q             - Quit the REPL and stop the server
+"""
+
+
+def handle_quit_command(loop: asyncio.AbstractEventLoop) -> bool:
+    """Handle /quit and /q commands.
+
+    Returns:
+        True to signal REPL should exit
+    """
+    if shutdown_event:
+        asyncio.run_coroutine_threadsafe(trigger_shutdown(), loop)
+    return True
+
+
+def handle_help_command() -> bool:
+    """Handle /help and /h commands.
+
+    Returns:
+        False to signal REPL should continue
+    """
+    print(HELP_TEXT)
+    return False
 
 
 def repl_thread(loop: asyncio.AbstractEventLoop):
@@ -31,12 +56,8 @@ def repl_thread(loop: asyncio.AbstractEventLoop):
     print("\n" + "="*60)
     print("REPL Started - Type messages to broadcast via SSE")
     print("Messages will be sent to all connected clients at /events")
-    print("")
-    print("Usage:")
-    print("  data: <message>   - Send as regular data message")
-    print("  event: <name> <message> - Send as custom event")
-    print("  /help or /h       - Show this help message")
-    print("  /quit or /q       - Quit the REPL and stop the server")
+    print()
+    print(HELP_TEXT.rstrip())
     print("="*60 + "\n")
 
     while True:
@@ -49,19 +70,11 @@ def repl_thread(loop: asyncio.AbstractEventLoop):
             stripped = line.strip().lower()
 
             if stripped in ["/quit", "/q"]:
-                if shutdown_event:
-                    asyncio.run_coroutine_threadsafe(
-                        trigger_shutdown(), loop
-                    )
-                break
+                if handle_quit_command(loop):
+                    break
 
-            if stripped in ["/help", "/h"]:
-                print("\nUsage:")
-                print("  data: <message>         - Send as regular data message")
-                print("  event: <name> <message> - Send as custom event")
-                print("  /help or /h             - Show this help message")
-                print("  /quit or /q             - Quit the REPL and stop the server")
-                print()
+            elif stripped in ["/help", "/h"]:
+                handle_help_command()
                 continue
 
             # Parse the input
