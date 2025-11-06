@@ -18,9 +18,16 @@ subscribers: list[asyncio.Queue] = []
 # Shutdown event to signal server shutdown
 shutdown_event: asyncio.Event | None = None
 
+# Server started event to coordinate REPL startup
+server_started_event: threading.Event | None = None
+
 
 def repl_thread(loop: asyncio.AbstractEventLoop):
     """REPL thread that reads input and broadcasts to SSE clients."""
+    # Wait for the server to finish starting up
+    if server_started_event:
+        server_started_event.wait()
+
     print("\n" + "="*60)
     print("REPL Started - Type messages to broadcast via SSE")
     print("Messages will be sent to all connected clients at /events")
@@ -42,7 +49,6 @@ def repl_thread(loop: asyncio.AbstractEventLoop):
             stripped = line.strip().lower()
 
             if stripped in ["/quit", "/q"]:
-                print("\nShutting down server...")
                 if shutdown_event:
                     asyncio.run_coroutine_threadsafe(
                         trigger_shutdown(), loop
@@ -202,7 +208,7 @@ def create_app(static_dir: Path) -> FastAPI:
 
 async def run_server(app: FastAPI, host: str, port: int):
     """Run the uvicorn server with graceful shutdown support."""
-    global shutdown_event
+    global shutdown_event, server_started_event
     shutdown_event = asyncio.Event()
 
     config = uvicorn.Config(app, host=host, port=port, log_level="info")
@@ -210,6 +216,13 @@ async def run_server(app: FastAPI, host: str, port: int):
 
     # Create a task to run the server
     server_task = asyncio.create_task(server.serve())
+
+    # Wait a brief moment for server to start and print its messages
+    await asyncio.sleep(0.5)
+
+    # Signal that the server has started
+    if server_started_event:
+        server_started_event.set()
 
     # Wait for either the server to finish or shutdown event to be triggered
     shutdown_task = asyncio.create_task(shutdown_event.wait())
@@ -272,14 +285,15 @@ def main():
         print(f"Error: {static_dir} is not a directory")
         return 1
 
-    print(f"Starting server on http://{args.host}:{args.port}")
-    print(f"Serving files from: {static_dir}")
-
     app = create_app(static_dir)
 
     # Get the event loop
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+
+    # Create the server started event
+    global server_started_event
+    server_started_event = threading.Event()
 
     # Start REPL in a separate thread
     repl = threading.Thread(target=repl_thread, args=(loop,), daemon=True)
