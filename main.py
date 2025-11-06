@@ -35,8 +35,8 @@ def repl_thread(loop: asyncio.AbstractEventLoop):
     print("Usage:")
     print("  data: <message>   - Send as regular data message")
     print("  event: <name> <message> - Send as custom event")
+    print("  /help or /h       - Show this help message")
     print("  /quit or /q       - Quit the REPL and stop the server")
-    print("  help              - Show this help message")
     print("="*60 + "\n")
 
     while True:
@@ -55,12 +55,12 @@ def repl_thread(loop: asyncio.AbstractEventLoop):
                     )
                 break
 
-            if stripped == "help":
+            if stripped in ["/help", "/h"]:
                 print("\nUsage:")
                 print("  data: <message>         - Send as regular data message")
                 print("  event: <name> <message> - Send as custom event")
+                print("  /help or /h             - Show this help message")
                 print("  /quit or /q             - Quit the REPL and stop the server")
-                print("  help                    - Show this help message")
                 print()
                 continue
 

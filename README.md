@@ -42,14 +42,21 @@ The REPL supports two types of messages:
 
 ### Special Commands
 ```
-> help    - Show usage instructions
+> /help      - Show usage instructions
+> /h         - Same as /help (shorthand)
+> /quit      - Quit the REPL and stop the server
+> /q         - Same as /quit (shorthand)
 ```
 
 ## Example Session
 
 ```bash
 $ uv run main.py
-Starting server on http://localhost:8080
+INFO:     Started server process [12345]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://localhost:8080 (Press CTRL+C to quit)
+
 ============================================================
 REPL Started - Type messages to broadcast via SSE
 Messages will be sent to all connected clients at /events
@@ -57,13 +64,18 @@ Messages will be sent to all connected clients at /events
 Usage:
   data: <message>   - Send as regular data message
   event: <name> <message> - Send as custom event
-  help              - Show this help message
+  /help or /h       - Show this help message
+  /quit or /q       - Quit the REPL and stop the server
 ============================================================
 
 > data: Server is starting up
 > event: status All systems operational
 > event: alert Critical update available
 > Welcome message for all users
+> /quit
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
 ```
 
 ## API Endpoints
