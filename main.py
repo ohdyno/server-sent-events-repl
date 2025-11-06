@@ -1,7 +1,9 @@
 import argparse
+import asyncio
+from datetime import datetime
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 import uvicorn
 
 
@@ -15,6 +17,25 @@ def create_app(static_dir: Path) -> FastAPI:
 
     # Store static_dir in app state
     app.state.static_dir = static_dir
+
+    @app.get("/events")
+    async def events():
+        """Server-Sent Events endpoint that sends demo events."""
+        async def event_generator():
+            count = 0
+            while True:
+                count += 1
+                timestamp = datetime.now().isoformat()
+
+                # Send different types of events
+                if count % 5 == 0:
+                    yield f"event: custom\ndata: {{\"type\": \"custom\", \"count\": {count}, \"timestamp\": \"{timestamp}\"}}\n\n"
+                else:
+                    yield f"data: {{\"type\": \"message\", \"count\": {count}, \"timestamp\": \"{timestamp}\"}}\n\n"
+
+                await asyncio.sleep(1)
+
+        return StreamingResponse(event_generator(), media_type="text/event-stream")
 
     @app.get("/")
     async def root():

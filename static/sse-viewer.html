@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server-Sent Events Viewer</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #4ec9b0;
+            margin-bottom: 10px;
+        }
+
+        .controls {
+            background: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .controls input {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px;
+            background: #3c3c3c;
+            border: 1px solid #555;
+            color: #d4d4d4;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .controls button {
+            padding: 10px 20px;
+            background: #0e639c;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+
+        .controls button:hover {
+            background: #1177bb;
+        }
+
+        .controls button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+
+        .controls button.disconnect {
+            background: #c72b2b;
+        }
+
+        .controls button.disconnect:hover {
+            background: #e03e3e;
+        }
+
+        .controls button.clear {
+            background: #6c6c6c;
+        }
+
+        .controls button.clear:hover {
+            background: #858585;
+        }
+
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .status.connected {
+            background: #1a4d2e;
+            color: #4ec9b0;
+        }
+
+        .status.disconnected {
+            background: #4d1a1a;
+            color: #f48771;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .stats {
+            background: #252526;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+
+        .stat {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #858585;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 600;
+            color: #4ec9b0;
+        }
+
+        .events-container {
+            background: #252526;
+            border-radius: 8px;
+            padding: 20px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .events-container::-webkit-scrollbar {
+            width: 12px;
+        }
+
+        .events-container::-webkit-scrollbar-track {
+            background: #1e1e1e;
+        }
+
+        .events-container::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 6px;
+        }
+
+        .events-container::-webkit-scrollbar-thumb:hover {
+            background: #666;
+        }
+
+        .event {
+            background: #1e1e1e;
+            border-left: 4px solid #4ec9b0;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .event.custom {
+            border-left-color: #c586c0;
+        }
+
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            gap: 10px;
+        }
+
+        .event-type {
+            display: inline-block;
+            padding: 4px 8px;
+            background: #0e639c;
+            color: white;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .event.custom .event-type {
+            background: #c586c0;
+        }
+
+        .event-time {
+            color: #858585;
+            font-size: 12px;
+        }
+
+        .event-data {
+            color: #ce9178;
+            font-size: 14px;
+            line-height: 1.6;
+            word-break: break-all;
+        }
+
+        .no-events {
+            text-align: center;
+            padding: 40px;
+            color: #858585;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Server-Sent Events Viewer</h1>
+
+        <div class="controls">
+            <input
+                type="text"
+                id="eventUrl"
+                placeholder="SSE endpoint URL (e.g., /events)"
+                value="/events"
+            >
+            <button id="connectBtn">Connect</button>
+            <button id="disconnectBtn" class="disconnect" disabled>Disconnect</button>
+            <button id="clearBtn" class="clear">Clear Events</button>
+            <div class="status disconnected" id="status">
+                <span class="status-dot"></span>
+                <span>Disconnected</span>
+            </div>
+        </div>
+
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-label">Total Events</div>
+                <div class="stat-value" id="totalEvents">0</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Message Events</div>
+                <div class="stat-value" id="messageEvents">0</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Custom Events</div>
+                <div class="stat-value" id="customEvents">0</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Errors</div>
+                <div class="stat-value" id="errorCount" style="color: #f48771;">0</div>
+            </div>
+        </div>
+
+        <div class="events-container" id="eventsContainer">
+            <div class="no-events">No events received yet. Click "Connect" to start listening.</div>
+        </div>
+    </div>
+
+    <script>
+        let eventSource = null;
+        let eventCount = 0;
+        let messageEventCount = 0;
+        let customEventCount = 0;
+        let errorCount = 0;
+
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const eventUrlInput = document.getElementById('eventUrl');
+        const statusDiv = document.getElementById('status');
+        const eventsContainer = document.getElementById('eventsContainer');
+        const totalEventsSpan = document.getElementById('totalEvents');
+        const messageEventsSpan = document.getElementById('messageEvents');
+        const customEventsSpan = document.getElementById('customEvents');
+        const errorCountSpan = document.getElementById('errorCount');
+
+        function updateStatus(connected) {
+            if (connected) {
+                statusDiv.className = 'status connected';
+                statusDiv.innerHTML = '<span class="status-dot"></span><span>Connected</span>';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+            } else {
+                statusDiv.className = 'status disconnected';
+                statusDiv.innerHTML = '<span class="status-dot"></span><span>Disconnected</span>';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+            }
+        }
+
+        function updateStats() {
+            totalEventsSpan.textContent = eventCount;
+            messageEventsSpan.textContent = messageEventCount;
+            customEventsSpan.textContent = customEventCount;
+            errorCountSpan.textContent = errorCount;
+        }
+
+        function addEvent(eventType, data, rawData) {
+            // Remove "no events" message if present
+            const noEventsMsg = eventsContainer.querySelector('.no-events');
+            if (noEventsMsg) {
+                noEventsMsg.remove();
+            }
+
+            eventCount++;
+            if (eventType === 'message') {
+                messageEventCount++;
+            } else if (eventType === 'custom') {
+                customEventCount++;
+            }
+
+            const eventDiv = document.createElement('div');
+            eventDiv.className = `event ${eventType}`;
+
+            const timestamp = new Date().toLocaleTimeString();
+
+            eventDiv.innerHTML = `
+                <div class="event-header">
+                    <span class="event-type">${eventType}</span>
+                    <span class="event-time">${timestamp}</span>
+                </div>
+                <div class="event-data">${escapeHtml(rawData)}</div>
+            `;
+
+            eventsContainer.insertBefore(eventDiv, eventsContainer.firstChild);
+            updateStats();
+
+            // Limit to last 100 events
+            while (eventsContainer.children.length > 100) {
+                eventsContainer.removeChild(eventsContainer.lastChild);
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function connect() {
+            const url = eventUrlInput.value.trim();
+            if (!url) {
+                alert('Please enter a valid URL');
+                return;
+            }
+
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            eventSource = new EventSource(url);
+
+            eventSource.onopen = () => {
+                updateStatus(true);
+                console.log('SSE connection opened');
+            };
+
+            eventSource.onmessage = (event) => {
+                console.log('Message event:', event.data);
+                addEvent('message', event.data, event.data);
+            };
+
+            eventSource.addEventListener('custom', (event) => {
+                console.log('Custom event:', event.data);
+                addEvent('custom', event.data, event.data);
+            });
+
+            eventSource.onerror = (error) => {
+                console.error('SSE error:', error);
+                errorCount++;
+                updateStats();
+
+                if (eventSource.readyState === EventSource.CLOSED) {
+                    updateStatus(false);
+                }
+            };
+        }
+
+        function disconnect() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+                updateStatus(false);
+                console.log('SSE connection closed');
+            }
+        }
+
+        function clearEvents() {
+            eventsContainer.innerHTML = '<div class="no-events">No events received yet. Click "Connect" to start listening.</div>';
+            eventCount = 0;
+            messageEventCount = 0;
+            customEventCount = 0;
+            errorCount = 0;
+            updateStats();
+        }
+
+        connectBtn.addEventListener('click', connect);
+        disconnectBtn.addEventListener('click', disconnect);
+        clearBtn.addEventListener('click', clearEvents);
+
+        // Allow Enter key to connect
+        eventUrlInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !connectBtn.disabled) {
+                connect();
+            }
+        });
+    </script>
+</body>
+</html>
