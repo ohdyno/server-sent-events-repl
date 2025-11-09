@@ -269,6 +269,7 @@
             color: #858585;
         }
     </style>
+    <script type="module" src="/js/datastar.js"></script>
 </head>
 <body>
     <div class="container">
@@ -281,9 +282,9 @@
                 placeholder="SSE endpoint URL (e.g., /events)"
                 value="/events"
             >
-            <button id="connectBtn">Connect</button>
-            <button id="disconnectBtn" class="disconnect" disabled>Disconnect</button>
-            <button id="clearBtn" class="clear">Clear Events</button>
+            <button id="connectBtn" data-on:click="connect()">Connect</button>
+            <button id="disconnectBtn" data-on:click="disconnect()" class="disconnect" disabled>Disconnect</button>
+            <button id="clearBtn" data-on:click="clearEvents()" class="clear">Clear Events</button>
             <div class="status disconnected" id="status">
                 <span class="status-dot"></span>
                 <span>Disconnected</span>
@@ -464,10 +465,6 @@
             errorCount = 0;
             updateStats();
         }
-
-        connectBtn.addEventListener('click', connect);
-        disconnectBtn.addEventListener('click', disconnect);
-        clearBtn.addEventListener('click', clearEvents);
 
         // Allow Enter key to connect
         eventUrlInput.addEventListener('keypress', (e) => {
